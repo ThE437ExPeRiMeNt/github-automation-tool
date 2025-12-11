@@ -1,5 +1,6 @@
 import requests
 import json
+from bs4 import BeautifulSoup
 
 class AccountManager:
     def __init__(self):
@@ -46,44 +47,32 @@ class AccountManager:
         Requires bypassing CAPTCHAs and other security measures.
         """
         registration_url = "https://github.com/join"  # GitHub registration URL
-        data = {
-            "user[login]": username,
-            "user[email]": email,
-            "user[password]": password,
-            "authenticity_token": self.get_authenticity_token(registration_url)  # Fetch authenticity token
-        }
-
+        session = requests.Session()
         try:
-            session = requests.Session()
-            response = session.post(registration_url, data=data, allow_redirects=False)  # Prevent redirects
+            response = session.get(registration_url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            authenticity_token = soup.find('input', {'name': 'authenticity_token'})['value']
+
+            data = {
+                "user[login]": username,
+                "user[email]": email,
+                "user[password]": password,
+                "authenticity_token": authenticity_token
+            }
+
+            response = session.post(registration_url, data=data, allow_redirects=False, headers={
+              'Referer': registration_url
+            })
             response.raise_for_status()
 
             if response.status_code == 302:
                 print(f"Account {username} registered successfully.")
             else:
                 print(f"Account registration failed for {username}. Status code: {response.status_code}")
+                print(response.text)  # Print the response content for debugging
 
         except requests.exceptions.RequestException as e:
             print(f"Error during registration: {e}")
-
-    def get_authenticity_token(self, url):
-        """
-        Extracts the authenticity token from the registration page.
-
-        Note: This is required for the POST request to GitHub.
-        """
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            html_content = response.text
-            # Extract token using regular expressions or BeautifulSoup
-            import re
-            match = re.search(r'name="authenticity_token" value="([^"]+)"', html_content)
-            if match:
-                return match.group(1)
-            else:
-                print("Authenticity token not found.")
-                return None
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching registration page: {e}")
-            return None
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
